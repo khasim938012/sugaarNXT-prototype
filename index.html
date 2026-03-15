@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realistic Sugar Clarification Workflow</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #03050a; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: white; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
+        
+        /* UI Layers */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; justify-content: space-between; }
+        .panel { background: rgba(10, 15, 25, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); pointer-events: auto; overflow-y: auto; max-height: 100vh; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
+        
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 2px; }
+
+        .feature-card { transition: all 0.3s ease; cursor: pointer; border-left: 2px solid transparent; }
+        .feature-card:hover, .feature-card.active { background: rgba(59, 130, 246, 0.15); border-left: 4px solid #3b82f6; }
+        
+        .nav-button { pointer-events: auto; }
+        
+        #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #03050a; z-index: 100; display: flex; justify-content: center; align-items: center; flex-direction: column; transition: opacity 1s ease; }
+        .spinner { border: 3px solid rgba(255,255,255,0.05); width: 60px; height: 60px; border-radius: 50%; border-left-color: #10b981; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 3D Labels */
+        .label { color: #fff; font-size: 11px; font-weight: 700; background: rgba(0,0,0,0.85); padding: 6px 12px; border-radius: 4px; border-left: 3px solid #10b981; pointer-events: none; opacity: 0.9; transition: opacity 0.3s; letter-spacing: 0.5px; backdrop-filter: blur(4px); text-transform: uppercase; }
+        
+        /* Demo Subtitles - Compact HUD Style */
+        #subtitle-container { position: absolute; bottom: 20px; left: 20px; transform: none; background: rgba(5, 8, 15, 0.85); border: 1px solid rgba(16, 185, 129, 0.2); border-left: 3px solid #10b981; padding: 12px 16px; border-radius: 8px; text-align: left; width: 320px; max-height: 35vh; overflow-y: auto; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.5s; box-shadow: 0 10px 25px rgba(0,0,0,0.8); backdrop-filter: blur(8px); }
+        #subtitle-container::-webkit-scrollbar { width: 4px; }
+        #subtitle-container::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); border-radius: 2px; }
+        #subtitle-container::-webkit-scrollbar-thumb { background: #10b981; border-radius: 2px; }
+        #subtitle-text { font-size: 0.75rem; font-weight: 400; color: #cbd5e1; line-height: 1.4; }
+        #subtitle-title { font-size: 0.95rem; font-weight: 800; color: #34d399; margin-bottom: 6px; text-shadow: 0 1px 3px rgba(52,211,153,0.2); border-bottom: 1px solid rgba(52,211,153,0.1); padding-bottom: 4px;}
+        
+        .ui-hidden { opacity: 0 !important; pointer-events: none !important; }
+        .ui-hidden .panel { pointer-events: none !important; }
+
+        /* Highlight Pulse */
+        @keyframes pulse-btn { 0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(16, 185, 129, 0); } 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); } }
+        .btn-pulse { animation: pulse-btn 2s infinite; }
+        
+        /* Custom Scrollbar for Text Panels */
+        .text-scroll::-webkit-scrollbar { width: 4px; }
+        .text-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); border-radius: 2px; }
+        .text-scroll::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 2px; }
+    </style>
+</head>
+<body>
+
+    <div id="loading">
+        <div class="spinner mb-6"></div>
+        <h2 class="text-xl font-bold tracking-[0.2em] text-emerald-500">INITIALIZING FACTORY WORKFLOW</h2>
+        <p class="text-xs text-gray-400 mt-2 tracking-widest">LOADING CINEMATIC DEMO...</p>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <!-- Top Navigation Controls -->
+    <div id="top-controls" class="absolute top-6 left-0 w-full flex justify-center gap-4 z-50 pointer-events-none">
+        <button id="btn-demo" class="btn-pulse pointer-events-auto bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] text-sm font-bold transition-all hover:scale-105 flex items-center gap-2 border border-emerald-400/50 backdrop-blur-md">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            PLAY AUTO-TOUR DEMO
+        </button>
+        <button id="btn-toggle-info" class="pointer-events-auto bg-slate-800/90 hover:bg-slate-700 text-white px-6 py-3 rounded-full shadow-lg text-sm font-bold transition-all hover:scale-105 flex items-center gap-2 border border-slate-600/50 backdrop-blur-md">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            Read Document
+        </button>
+        <button id="btn-reset" class="pointer-events-auto bg-blue-600/90 hover:bg-blue-500 text-white px-6 py-3 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.3)] text-sm font-bold transition-all hover:scale-105 flex items-center gap-2 border border-blue-400/30 backdrop-blur-md">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            Reset Camera
+        </button>
+    </div>
+
+    <div id="ui-layer" class="p-6 ui-hidden transition-opacity duration-500">
+        <!-- Left Panel: Comprehensive Overview -->
+        <div class="panel w-[30%] p-8 rounded-lg flex flex-col gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-white mb-1">Process Overview</h1>
+                <div class="h-1 w-12 bg-blue-500 rounded"></div>
+            </div>
+            
+            <div class="text-[0.85rem] text-gray-300 space-y-4">
+                <p class="leading-relaxed">
+                    This interactive 3D module demonstrates an advanced approach to sugar juice clarification. By introducing physical micro-filtration and pre-separation stages before the traditional clarifier, the system effectively eliminates fine suspended particles like bagacillo, soil, and sand early in the process.
+                </p>
+                <p class="leading-relaxed">
+                    Explore the interactive model by clicking the stages on the right, or click the <strong class="text-emerald-400">Play Auto-Tour Demo</strong> button above for a guided cinematic presentation of the complete 5-step workflow.
+                </p>
+            </div>
+        </div>
+
+        <!-- Right Panel: The 5 USPs -->
+        <div class="panel w-[35%] p-8 rounded-lg flex flex-col gap-4">
+            <div>
+                <h2 class="text-xl font-bold text-white mb-1">Interactive Workflow</h2>
+                <div class="h-1 w-12 bg-emerald-500 rounded mb-2"></div>
+                <p class="text-xs text-gray-500">Select a process stage to view on the 3D model.</p>
+            </div>
+            
+            <div id="features-list" class="flex flex-col gap-3 mt-2 overflow-y-auto text-scroll pr-2" style="max-height: 65vh;">
+                <!-- Features injected by JS -->
+            </div>
+        </div>
+    </div>
+
+    <div id="subtitle-container">
+        <div id="subtitle-title"></div>
+        <p id="subtitle-text"></p>
+    </div>
+
+    <!-- Import Three.js & Addons -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+        // --- DATA ---
+        const features = [
+            {
+                id: 'crushing', title: '1. Cane Crushing & Sand Trap',
+                desc: `<p class="mb-2 text-[0.75rem] text-gray-200 leading-relaxed">When sugarcane arrives at a sugar factory, it first goes through washing and crushing to extract the raw juice. During crushing, the cane is pressed by heavy rollers and the liquid obtained is called mixed juice, which contains not only sugar solution but also many impurities such as soil, sand, bagacillo (tiny cane fibers), wax, and other suspended particles. This raw juice cannot directly go to sugar production because these impurities would reduce sugar quality and cause scaling or blockage in factory equipment.</p>
+                       <p class="text-[0.75rem] text-gray-200 leading-relaxed">Therefore, the juice first passes through a Hydro-Cyclonic Sand Trap, where it enters the chamber at high speed and begins to spin. Due to this centrifugal motion, heavy materials like sand and soil move outward and settle at the bottom of the chamber, while the lighter juice moves upward. This step removes most of the heavy dirt before fine filtration begins.</p>`,
+                camPos: { x: -25, y: 20, z: 30 }, lookAt: { x: -20, y: 10, z: 0 }, highlight: 'cyclone'
+            },
+            {
+                id: 'ultrasonic', title: '2. Ultrasonic Micro-Filtration Unit',
+                desc: `<p class="mb-2 text-[0.75rem] text-gray-200 leading-relaxed">After this pre-cleaning stage, the partially cleaned juice flows into the Ultrasonic Micro-Filtration Unit. Inside this system there is a very fine stainless steel micro-mesh screen (around 50 microns) that removes very small particles such as bagacillo fibers and fine suspended solids.</p>
+                       <p class="text-[0.75rem] text-gray-200 leading-relaxed">Normally such fine screens would clog because sugar juice is sticky, but this system uses ultrasonic transducers that create high-frequency vibrations (20–40 kHz) on the mesh surface. These vibrations prevent particles from sticking to the holes, so the filter keeps working continuously without blockage. As the juice passes through the vibrating micro-screen, most of the remaining impurities are removed and the juice becomes much clearer.</p>`,
+                camPos: { x: -3, y: 14, z: 8 }, lookAt: { x: -12, y: 10, z: 0 }, highlight: 'ultrasonicRings'
+            },
+            {
+                id: 'sensors', title: '3. Real-Time Clarity Sensors',
+                desc: `<p class="text-[0.75rem] text-gray-200 leading-relaxed">During filtration, the system also includes real-time turbidity and transmittance sensors that constantly check the clarity of the filtered juice. If the juice becomes cloudy or contains too many particles, the control system automatically redirects it back for additional filtration or adjusts the flow rate until the quality improves. This ensures that the juice leaving the filtration unit always maintains a consistent clarity level before entering the next stage of sugar production.</p>`,
+                camPos: { x: -2, y: 5, z: 9 }, lookAt: { x: -8, y: 3.5, z: 0 }, highlight: 'sensorBox'
+            },
+            {
+                id: 'screwpress', title: '4. Micro-Screw Press for Juice Recovery',
+                desc: `<p class="mb-2 text-[0.75rem] text-gray-200 leading-relaxed">Meanwhile, the solid waste collected on the filter still contains some sugar juice trapped within the fibers. To prevent sugar loss, the system uses a micro-screw press that compresses the collected solids.</p>
+                       <p class="text-[0.75rem] text-gray-200 leading-relaxed">This squeezing process extracts the remaining juice and sends it back into the main juice stream, while the pressed fibers are discharged as a semi-dry waste cake. By doing this, almost all the valuable juice is recovered and very little sugar is lost.</p>`,
+                camPos: { x: -15, y: 6, z: -10 }, lookAt: { x: -10, y: 3.5, z: -3 }, highlight: 'screwPress'
+            },
+            {
+                id: 'clarifier', title: '5. Clarification & Evaporation',
+                desc: `<p class="text-[0.75rem] text-gray-200 leading-relaxed">Finally, the result of these combined processes is clean, clarified juice with significantly reduced turbidity and impurities. This clear juice can now move safely to the juice clarification and evaporation stages, where it will later be concentrated and crystallized into sugar. By removing dirt, fibers, and suspended particles early in the process, the system improves juice clarity, sugar quality, equipment life, and overall sugar recovery in the factory.</p>`,
+                camPos: { x: 30, y: 28, z: 45 }, lookAt: { x: 30, y: 12, z: 0 }, highlight: 'clarifier' // Doesn't need strict highlight, cam handles it
+            }
+        ];
+
+        // --- SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x03050a, 0.012); // Deep atmospheric fog
+
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const initialCamPos = { x: 15, y: 35, z: 70 };
+        const initialLookAt = { x: 5, y: 10, z: 0 };
+        camera.position.set(initialCamPos.x, initialCamPos.y, initialCamPos.z);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.1; // Slightly brighter for clarity
+        container.appendChild(renderer.domElement);
+
+        // HDRI Environment setup for realistic metal reflections
+        const pmremGenerator = new THREE.PMREMGenerator(renderer);
+        scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        container.appendChild(labelRenderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; 
+        controls.target.set(initialLookAt.x, initialLookAt.y, initialLookAt.z);
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfff0dd, 3);
+        dirLight.position.set(40, 60, -30);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 200;
+        dirLight.shadow.camera.left = -60;
+        dirLight.shadow.camera.right = 60;
+        dirLight.shadow.camera.top = 60;
+        dirLight.shadow.camera.bottom = -60;
+        dirLight.shadow.bias = -0.0005;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0xaaccff, 1.5);
+        fillLight.position.set(-40, 30, 40);
+        scene.add(fillLight);
+
+        // --- PROCEDURAL TEXTURES GENERATION ---
+        function createNoiseTexture(size, intensity) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const imgData = ctx.createImageData(size, size);
+            for(let i=0; i<imgData.data.length; i+=4) {
+                const val = 255 - Math.random() * intensity;
+                imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = val;
+                imgData.data[i+3] = 255;
+            }
+            ctx.putImageData(imgData, 0, 0);
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        function createDiamondPlateTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#666'; ctx.fillRect(0,0,128,128);
+            ctx.fillStyle = '#999';
+            for(let i=0; i<2; i++) {
+                for(let j=0; j<2; j++) {
+                    ctx.save();
+                    ctx.translate(i*64 + 32, j*64 + 32);
+                    if((i+j)%2===0) ctx.rotate(Math.PI/4); else ctx.rotate(-Math.PI/4);
+                    ctx.fillRect(-10, -2, 20, 4);
+                    ctx.fillRect(-10, 10, 20, 4);
+                    ctx.restore();
+                }
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(10, 2);
+            return tex;
+        }
+
+        function createFloorTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024; canvas.height = 1024;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#0a0f18'; ctx.fillRect(0,0,1024,1024);
+            for(let i=0; i<30000; i++) {
+                ctx.fillStyle = `rgba(0,0,0,${Math.random()*0.15})`;
+                ctx.fillRect(Math.random()*1024, Math.random()*1024, 4, 4);
+            }
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4;
+            for(let i=0; i<=1024; i+=128) { 
+                ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,1024); ctx.stroke(); 
+                ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(1024,i); ctx.stroke(); 
+            }
+            ctx.fillStyle = '#ca8a04'; ctx.fillRect(0, 0, 1024, 32);
+            ctx.fillStyle = '#000000';
+            for(let i=0; i<1024; i+=64) { 
+                ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i+32,32); ctx.lineTo(i+64,32); ctx.lineTo(i+32,0); ctx.fill(); 
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(20, 20);
+            tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            return tex;
+        }
+
+        function createFluidAlphaTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000'; ctx.fillRect(0,0,256,64); 
+            for(let i=0; i<4; i++) {
+                const grad = ctx.createLinearGradient(i*64, 0, i*64+40, 0);
+                grad.addColorStop(0, 'rgba(255,255,255,0)');
+                grad.addColorStop(0.5, 'rgba(255,255,255,1)');
+                grad.addColorStop(1, 'rgba(255,255,255,0)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(i*64, 10, 40, 44);
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            return tex;
+        }
+
+        const texNoise = createNoiseTexture(512, 100);
+        const texGrating = createDiamondPlateTexture();
+        const texFloor = createFloorTexture();
+        const texFluid = createFluidAlphaTexture();
+
+        // --- MATERIALS ---
+        const matFloor = new THREE.MeshStandardMaterial({ map: texFloor, roughness: 0.8, metalness: 0.1 });
+        const matStainless = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.85, roughness: 0.2, bumpMap: texNoise, bumpScale: 0.002 });
+        const matDarkMetal = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.5, roughness: 0.6, bumpMap: texNoise, bumpScale: 0.005 });
+        const matBrass = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.3, bumpMap: texNoise, bumpScale: 0.003 });
+        const matGrating = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6, roughness: 0.6, map: texGrating });
+        const matGlass = new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.1, roughness: 0.05, transmission: 0.9, transparent: true, opacity: 1, ior: 1.5, thickness: 0.5 });
+        const matHighlight = new THREE.MeshStandardMaterial({ color: 0x34d399, emissive: 0x059669, emissiveIntensity: 0.8, metalness: 0.8, roughness: 0.2 });
+        const matSensor = new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x10b981, emissiveIntensity: 1 });
+        const matYellow = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4, metalness: 0.2 });
+
+        // Glowing Fluid Materials (Vibrant for clarity)
+        const fluidMaterials = {
+            'dirty': new THREE.MeshStandardMaterial({ color: 0x78350f, emissive: 0x451a03, emissiveIntensity: 0.5, map: texFluid, transparent: true, opacity: 0.9, side: THREE.DoubleSide }), 
+            'cleaner': new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0x92400e, emissiveIntensity: 0.5, map: texFluid, transparent: true, opacity: 0.9, side: THREE.DoubleSide }), 
+            'clear': new THREE.MeshStandardMaterial({ color: 0xfef08a, emissive: 0xca8a04, emissiveIntensity: 0.8, map: texFluid, transparent: true, opacity: 0.9, side: THREE.DoubleSide })    
+        };
+
+        // --- ENVIRONMENT ---
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(350, 350), matFloor);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        function createIBeam(length) {
+            const group = new THREE.Group();
+            const web = new THREE.Mesh(new THREE.BoxGeometry(0.2, length, 1), matDarkMetal);
+            const flange1 = new THREE.Mesh(new THREE.BoxGeometry(1, length, 0.2), matDarkMetal);
+            flange1.position.z = 0.5;
+            const flange2 = new THREE.Mesh(new THREE.BoxGeometry(1, length, 0.2), matDarkMetal);
+            flange2.position.z = -0.5;
+            web.castShadow = flange1.castShadow = flange2.castShadow = true;
+            web.receiveShadow = flange1.receiveShadow = flange2.receiveShadow = true;
+            group.add(web, flange1, flange2);
+            return group;
+        }
+
+        const machineParts = {};
+
+        function createLabel(text, position) {
+            const div = document.createElement('div');
+            div.className = 'label';
+            div.textContent = text;
+            const label = new CSS2DObject(div);
+            label.position.copy(position);
+            scene.add(label);
+            return label;
+        }
+
+        // --- NODE 1: CANE CRUSHING MILL ---
+        const millGroup = new THREE.Group();
+        millGroup.position.set(-35, 0, 0);
+        const millBase = new THREE.Mesh(new THREE.BoxGeometry(10, 1.5, 12), matDarkMetal);
+        millBase.position.y = 0.75;
+        millBase.castShadow = millBase.receiveShadow = true;
+        millGroup.add(millBase);
+        [[-4, -5], [4, -5], [-4, 5], [4, 5]].forEach(pos => {
+            const beam = createIBeam(10);
+            beam.position.set(pos[0], 5, pos[1]);
+            millGroup.add(beam);
+        });
+        const topFrame = new THREE.Mesh(new THREE.BoxGeometry(9, 1, 11), matDarkMetal);
+        topFrame.position.set(0, 10.5, 0);
+        millGroup.add(topFrame);
+        const hopperMat = new THREE.MeshStandardMaterial({color: 0x475569, metalness: 0.3, roughness: 0.8, side: THREE.DoubleSide});
+        const hopper = new THREE.Mesh(new THREE.CylinderGeometry(5, 2, 4, 4, 1, true), hopperMat);
+        hopper.rotation.y = Math.PI/4;
+        hopper.position.set(-8, 12, 0);
+        hopper.castShadow = true;
+        millGroup.add(hopper);
+        for(let i=0; i<3; i++) {
+            const rollerGroup = new THREE.Group();
+            for(let j=-3; j<=3; j+=0.2) {
+                const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.15, 32), matStainless);
+                disc.rotation.x = Math.PI / 2;
+                disc.position.set(0, 0, j);
+                rollerGroup.add(disc);
+            }
+            const gear = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.5, 16), matBrass);
+            gear.rotation.x = Math.PI/2;
+            gear.position.set(0, 0, 3.5);
+            rollerGroup.add(gear);
+            rollerGroup.position.set(i*2.5 - 2.5, 6 + (i%2==0?0:2.5), 0);
+            rollerGroup.castShadow = true;
+            millGroup.add(rollerGroup);
+        }
+        const basin = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 8), matStainless);
+        basin.position.set(-1, 2.5, 0);
+        basin.castShadow = basin.receiveShadow = true;
+        millGroup.add(basin);
+        createLabel("1. Cane Crushing", new THREE.Vector3(-35, 16, 0));
+        scene.add(millGroup);
+
+        // --- NODE 2: ADVANCED MICRO-FILTER (THE FOCUS) ---
+        const filterGroup = new THREE.Group();
+        filterGroup.position.set(-10, 0, 0);
+        const filterBase = new THREE.Mesh(new THREE.BoxGeometry(12, 1, 12), matDarkMetal);
+        filterBase.position.y = 0.5;
+        filterBase.castShadow = filterBase.receiveShadow = true;
+        filterGroup.add(filterBase);
+        const fWalkway = new THREE.Mesh(new THREE.RingGeometry(6.5, 9, 4), matGrating);
+        fWalkway.rotation.x = -Math.PI/2;
+        fWalkway.rotation.z = Math.PI/4;
+        fWalkway.position.y = 1;
+        fWalkway.receiveShadow = true;
+        filterGroup.add(fWalkway);
+
+        // Feature 2: Cyclone 
+        const cycloneGroup = new THREE.Group();
+        cycloneGroup.position.y = 17;
+        const cycBody = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 1, 7, 32), matStainless);
+        cycBody.castShadow = true;
+        cycloneGroup.add(cycBody);
+        const cycTop = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 2, 32), matStainless);
+        cycTop.position.y = 4.5;
+        cycTop.castShadow = true;
+        cycloneGroup.add(cycTop);
+        const inlet = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 4), matStainless);
+        inlet.rotation.z = Math.PI / 2;
+        inlet.position.set(-3.5, 4.5, 2.5); 
+        cycloneGroup.add(inlet);
+        const flangeIn = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.2, 16), matDarkMetal);
+        flangeIn.rotation.z = Math.PI / 2;
+        flangeIn.position.set(-5.5, 4.5, 2.5);
+        cycloneGroup.add(flangeIn);
+        const gritTrap = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1, 2, 16), matBrass);
+        gritTrap.position.y = -4.5;
+        cycloneGroup.add(gritTrap);
+        const valveWheel = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 8, 16), matYellow);
+        valveWheel.position.set(0, -5, 1.2);
+        cycloneGroup.add(valveWheel);
+        filterGroup.add(cycloneGroup);
+        machineParts.cyclone = cycloneGroup;
+
+        // Glass Chamber
+        const chamberGroup = new THREE.Group();
+        const glassChamber = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 5.5, 11, 32), matGlass);
+        glassChamber.position.y = 8;
+        chamberGroup.add(glassChamber);
+        for(let i=0; i<8; i++) {
+            const rib = new THREE.Mesh(new THREE.BoxGeometry(0.4, 11, 0.4), matDarkMetal);
+            const angle = (i/8)*Math.PI*2;
+            rib.position.set(Math.cos(angle)*5.6, 8, Math.sin(angle)*5.6);
+            chamberGroup.add(rib);
+        }
+        filterGroup.add(chamberGroup);
+
+        // Feature 5: Cartridges
+        const cartridges = new THREE.Group();
+        for(let i=-1.5; i<=1.5; i+=1.5) {
+            for(let j=-1.5; j<=1.5; j+=1.5) {
+                if(i===0 && j===0) continue; 
+                const cart = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 9.5, 16), matStainless);
+                cart.position.set(i*1.8, 8, j*1.8);
+                const gauge = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16), matBrass);
+                gauge.position.set(i*1.8, 12.8, j*1.8);
+                gauge.rotation.x = Math.PI/2;
+                cartridges.add(gauge);
+                cartridges.add(cart);
+            }
+        }
+        filterGroup.add(cartridges);
+        machineParts.cartridges = cartridges;
+
+        // Feature 1: Ultrasonic Rings
+        const ultrasonicRings = new THREE.Group();
+        const centerCol = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 10, 32), new THREE.MeshStandardMaterial({color: 0x888888, metalness: 0.9, roughness: 0.4, wireframe: true}));
+        centerCol.position.y = 8;
+        ultrasonicRings.add(centerCol);
+        for(let i=0; i<6; i++) {
+            const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.15, 16, 32), matStainless);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 4 + (i * 1.6);
+            for(let j=0; j<4; j++) {
+                const con = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.2, 0.4), matBrass);
+                con.position.set(Math.cos((j/4)*Math.PI*2)*1.6, ring.position.y, Math.sin((j/4)*Math.PI*2)*1.6);
+                ultrasonicRings.add(con);
+            }
+            ultrasonicRings.add(ring);
+        }
+        filterGroup.add(ultrasonicRings);
+        machineParts.ultrasonicRings = ultrasonicRings;
+
+        // Feature 4: Screw Press (ANIMATED)
+        const screwPressGroup = new THREE.Group();
+        screwPressGroup.position.set(0, 3.5, -6);
+        const housing = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 8, 32, 1, true, 0, Math.PI*1.5), matStainless);
+        housing.rotation.z = Math.PI / 2;
+        housing.material.side = THREE.DoubleSide;
+        housing.castShadow = true;
+        screwPressGroup.add(housing);
+
+        const screwCurve = new THREE.CatmullRomCurve3(
+            Array.from({length: 60}).map((_, i) => {
+                const t = i/60;
+                const angle = t * Math.PI * 14; 
+                return new THREE.Vector3( (t-0.5)*7.5, Math.cos(angle)*1.1, Math.sin(angle)*1.1 );
+            })
+        );
+        const screw = new THREE.Mesh(new THREE.TubeGeometry(screwCurve, 150, 0.2, 8, false), matDarkMetal);
+        screwPressGroup.add(screw);
+        machineParts.screwMesh = screw; // Save reference for rotation animation
+
+        const centralShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 7.8), matDarkMetal);
+        centralShaft.rotation.z = Math.PI / 2;
+        screwPressGroup.add(centralShaft);
+        const wasteBin = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 3), matYellow);
+        wasteBin.position.set(4, -2.2, 0);
+        wasteBin.castShadow = true;
+        screwPressGroup.add(wasteBin);
+        filterGroup.add(screwPressGroup);
+        machineParts.screwPress = screwPressGroup;
+
+        // Feature 3: Sensors
+        const outPipeGroup = new THREE.Group();
+        outPipeGroup.position.set(5.5, 3.5, 0);
+        const outPipe = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 6), matStainless);
+        outPipe.rotation.z = Math.PI / 2;
+        outPipeGroup.add(outPipe);
+        const flangeOut = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 0.2, 16), matDarkMetal);
+        flangeOut.rotation.z = Math.PI / 2;
+        flangeOut.position.x = 3;
+        outPipeGroup.add(flangeOut);
+        const sensorBox = new THREE.Group();
+        const plcBody = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2.5), matDarkMetal);
+        plcBody.position.y = 2;
+        sensorBox.add(plcBody);
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1), matSensor);
+        screen.position.set(0, 2.4, 1.26);
+        sensorBox.add(screen);
+        outPipeGroup.add(sensorBox);
+        filterGroup.add(outPipeGroup);
+        machineParts.sensorBox = sensorBox;
+
+        createLabel("2. Innovation: Micro-Filtration", new THREE.Vector3(-10, 26, 0));
+        scene.add(filterGroup);
+
+        // --- NODE 3: JUICE CLARIFIER ---
+        const clarifierGroup = new THREE.Group();
+        clarifierGroup.position.set(20, 0, 0);
+        const clarBase = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 14, 32), matStainless);
+        clarBase.position.y = 10;
+        clarBase.castShadow = clarBase.receiveShadow = true;
+        clarifierGroup.add(clarBase);
+        const clarBottom = new THREE.Mesh(new THREE.ConeGeometry(11, 6, 32), matDarkMetal);
+        clarBottom.rotation.x = Math.PI;
+        clarBottom.position.y = 0;
+        clarBottom.castShadow = true;
+        clarifierGroup.add(clarBottom);
+        const walkway = new THREE.Mesh(new THREE.RingGeometry(11, 14, 32), matGrating);
+        walkway.rotation.x = -Math.PI / 2;
+        walkway.position.y = 17;
+        walkway.receiveShadow = true;
+        clarifierGroup.add(walkway);
+        const railTop = new THREE.Mesh(new THREE.TorusGeometry(13.5, 0.1, 8, 32), matYellow);
+        railTop.rotation.x = Math.PI / 2;
+        railTop.position.y = 18.5;
+        clarifierGroup.add(railTop);
+        const rakeMotor = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 4), matDarkMetal);
+        rakeMotor.position.set(0, 18.5, 0);
+        rakeMotor.castShadow = true;
+        clarifierGroup.add(rakeMotor);
+        for(let i=0; i<6; i++) {
+            const angle = (i/6) * Math.PI * 2;
+            const col = createIBeam(17);
+            col.position.set(Math.cos(angle)*10.5, 8.5, Math.sin(angle)*10.5);
+            col.lookAt(new THREE.Vector3(0, 8.5, 0));
+            clarifierGroup.add(col);
+        }
+        createLabel("3. Juice Clarifier", new THREE.Vector3(20, 22, 0));
+        scene.add(clarifierGroup);
+
+        // --- NODE 4: EVAPORATORS ---
+        const evapGroup = new THREE.Group();
+        evapGroup.position.set(50, 0, 0);
+        for(let i=0; i<3; i++) {
+            const xOffset = (i-1)*10;
+            const evap = new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 15, 32), matStainless);
+            evap.position.set(xOffset, 10, 0);
+            evap.castShadow = evap.receiveShadow = true;
+            const domeTop = new THREE.Mesh(new THREE.SphereGeometry(4, 32, 16, 0, Math.PI*2, 0, Math.PI/2), matStainless);
+            domeTop.position.set(xOffset, 17.5, 0);
+            const domeBottom = new THREE.Mesh(new THREE.SphereGeometry(4, 32, 16, 0, Math.PI*2, Math.PI/2, Math.PI/2), matDarkMetal);
+            domeBottom.position.set(xOffset, 2.5, 0);
+            for(let j=0; j<4; j++) {
+                const angle = (j/4) * Math.PI * 2 + Math.PI/4;
+                const leg = createIBeam(5);
+                leg.position.set(xOffset + Math.cos(angle)*3.5, 2.5, Math.sin(angle)*3.5);
+                evapGroup.add(leg);
+            }
+            if(i < 2) {
+                const vaporPath = new THREE.CatmullRomCurve3([
+                    new THREE.Vector3(xOffset, 21.5, 0),
+                    new THREE.Vector3(xOffset + 5, 22, 0),
+                    new THREE.Vector3(xOffset + 10, 15, 0)
+                ]);
+                const vaporPipe = new THREE.Mesh(new THREE.TubeGeometry(vaporPath, 32, 1.5, 16, false), matDarkMetal);
+                vaporPipe.castShadow = true;
+                evapGroup.add(vaporPipe);
+            }
+            evapGroup.add(evap, domeTop, domeBottom);
+        }
+        const evapWalkway = new THREE.Mesh(new THREE.BoxGeometry(32, 0.5, 6), matGrating);
+        evapWalkway.position.set(0, 8, 6);
+        evapWalkway.receiveShadow = true;
+        evapGroup.add(evapWalkway);
+        createLabel("4. Evaporators", new THREE.Vector3(50, 26, 0));
+        scene.add(evapGroup);
+
+        // --- REALISTIC PIPING & FLUID FLOW ---
+        const fluidTubes = []; 
+
+        function createPipeSystem(start, end, type) {
+            const midY = Math.max(start.y, end.y) + 5;
+            const path = new THREE.CatmullRomCurve3([
+                start, new THREE.Vector3(start.x, midY, start.z),
+                new THREE.Vector3(end.x, midY, end.z), end
+            ]);
+            
+            const outerPipe = new THREE.Mesh(new THREE.TubeGeometry(path, 64, 0.8, 16, false), matGlass);
+            scene.add(outerPipe);
+
+            const innerFluid = new THREE.Mesh(new THREE.TubeGeometry(path, 64, 0.65, 12, false), fluidMaterials[type].clone()); 
+            innerFluid.material.map = texFluid.clone();
+            scene.add(innerFluid);
+            fluidTubes.push({ mesh: innerFluid, type: type }); // Store type to adjust flow speed
+
+            [start, end].forEach(pos => {
+                const flange = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.3, 16), matDarkMetal);
+                flange.position.copy(pos);
+                if(pos === start) flange.lookAt(new THREE.Vector3(start.x, midY, start.z));
+                else flange.lookAt(new THREE.Vector3(end.x, midY, end.z));
+                flange.rotateX(Math.PI/2);
+                scene.add(flange);
+            });
+        }
+
+        createPipeSystem(new THREE.Vector3(-31, 3.5, 0), new THREE.Vector3(-14, 21, 2.5), 'dirty');
+        createPipeSystem(new THREE.Vector3(-4.5, 3.5, 0), new THREE.Vector3(20, 17, 0), 'cleaner');
+        createPipeSystem(new THREE.Vector3(20, 3, 0), new THREE.Vector3(40, 12, 0), 'clear');
+
+
+        // --- UI INTERACTION & HIGHLIGHT LOGIC ---
+        const featuresList = document.getElementById('features-list');
+        let activeOriginalMaterials = new Map();
+
+        function resetHighlights() {
+            activeOriginalMaterials.forEach((mat, mesh) => { mesh.material = mat; });
+            activeOriginalMaterials.clear();
+            document.querySelectorAll('.feature-card').forEach(c => c.classList.remove('active'));
+        }
+
+        function highlightPart(partName) {
+            resetHighlights();
+            const part = machineParts[partName];
+            if(!part) return;
+
+            const applyHighlight = (mesh) => {
+                if(mesh.material && mesh.material !== matHighlight && !mesh.material.transparent) {
+                    activeOriginalMaterials.set(mesh, mesh.material);
+                    mesh.material = matHighlight;
+                }
+            };
+            if(part.isGroup) part.traverse((child) => { if(child.isMesh) applyHighlight(child); });
+            else applyHighlight(part);
+        }
+
+        features.forEach((feat) => {
+            const card = document.createElement('div');
+            card.className = 'feature-card p-4 rounded bg-slate-900/60 border border-slate-700/50 pointer-events-auto shadow-inner';
+            card.innerHTML = `<h3 class="font-bold text-gray-100 text-sm">${feat.title}</h3>
+                              <div class="feat-desc text-xs text-gray-400 mt-2 max-h-[2.5em] overflow-hidden transition-all duration-500 leading-relaxed">${feat.desc}</div>`;
+            
+            card.addEventListener('click', () => {
+                resetHighlights();
+                card.classList.add('active');
+                card.querySelector('.feat-desc').style.maxHeight = '500px';
+                highlightPart(feat.highlight);
+                gsap.to(camera.position, { x: feat.camPos.x, y: feat.camPos.y, z: feat.camPos.z, duration: 1.5, ease: "power3.inOut" });
+                gsap.to(controls.target, { x: feat.lookAt.x, y: feat.lookAt.y, z: feat.lookAt.z, duration: 1.5, ease: "power3.inOut" });
+            });
+            card.addEventListener('mouseleave', () => {
+                if(!card.classList.contains('active')) card.querySelector('.feat-desc').style.maxHeight = '2.5em';
+            });
+            featuresList.appendChild(card);
+        });
+
+        document.getElementById('btn-toggle-info').addEventListener('click', () => {
+            document.getElementById('ui-layer').classList.toggle('ui-hidden');
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            if(window.demoTimeline) window.demoTimeline.kill(); 
+            document.getElementById('subtitle-container').style.opacity = '0';
+            document.getElementById('subtitle-container').style.pointerEvents = 'none';
+            document.getElementById('btn-demo').classList.add('btn-pulse'); // Restore pulse
+            resetHighlights();
+            featuresList.querySelectorAll('.feat-desc').forEach(p => p.style.maxHeight = '2.5em');
+            document.querySelectorAll('.feature-card').forEach(c => c.classList.remove('active'));
+            gsap.to(camera.position, { x: initialCamPos.x, y: initialCamPos.y, z: initialCamPos.z, duration: 2, ease: "power2.inOut" });
+            gsap.to(controls.target, { x: initialLookAt.x, y: initialLookAt.y, z: initialLookAt.z, duration: 2, ease: "power2.inOut" });
+        });
+
+        // --- CINEMATIC AUTO-TOUR LOGIC ---
+        function updateSubtitle(title, text) {
+            const container = document.getElementById('subtitle-container');
+            const titleEl = document.getElementById('subtitle-title');
+            const textEl = document.getElementById('subtitle-text');
+            
+            gsap.to(container, { opacity: 0, duration: 0.3, onComplete: () => {
+                titleEl.innerHTML = title;
+                textEl.innerHTML = text;
+                gsap.to(container, { opacity: 1, duration: 0.4 });
+            }});
+        }
+
+        document.getElementById('btn-demo').addEventListener('click', (e) => {
+            e.currentTarget.classList.remove('btn-pulse');
+            resetHighlights();
+            document.getElementById('ui-layer').classList.add('ui-hidden');
+            document.getElementById('subtitle-container').style.opacity = '1';
+            document.getElementById('subtitle-container').style.pointerEvents = 'auto';
+
+            if(window.demoTimeline) window.demoTimeline.kill();
+            const tl = gsap.timeline();
+            window.demoTimeline = tl;
+
+            // 1. Intro
+            tl.add(() => updateSubtitle("<div class='text-center'>Advanced Sugar Clarification</div>", "<div class='text-gray-300 text-center'>A high-fidelity cinematic tour of our Micro-Filtration Innovation.</div>"))
+              .to(camera.position, { x: 10, y: 35, z: 65, duration: 2, ease: "power1.inOut" })
+              .to(controls.target, { x: -10, y: 10, z: 0, duration: 2, ease: "power1.inOut" }, "<");
+
+            // 2. Dynamic loop through the exact 5-step workflow provided
+            features.forEach((feat) => {
+                tl.add(() => {
+                    highlightPart(feat.highlight);
+                    updateSubtitle(feat.title, feat.desc);
+                })
+                .to(camera.position, { x: feat.camPos.x, y: feat.camPos.y, z: feat.camPos.z, duration: 1.5, ease: "power2.out" })
+                .to(controls.target, { x: feat.lookAt.x, y: feat.lookAt.y, z: feat.lookAt.z, duration: 1.5, ease: "power2.out" }, "<")
+                // Cinematic drift while reading (Reduced to 8.5 seconds to speed up the tour)
+                .to(camera.position, { x: feat.camPos.x + 3, y: feat.camPos.y + 1, z: feat.camPos.z - 2, duration: 8.5, ease: "none" })
+                .add(() => resetHighlights());
+            });
+
+            // 3. Conclusion
+            tl.add(() => { updateSubtitle("<div class='text-center'>Tour Complete</div>", "<div class='text-gray-300 text-center'>Feel free to freely explore the 3D model.</div>"); })
+              .to({}, { duration: 2 })
+              .add(() => { document.getElementById('btn-reset').click(); });
+        });
+
+        // --- ANIMATION LOOP ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta();
+
+            // 1. Animate Fluid Flow through Pipes
+            fluidTubes.forEach(tube => {
+                // Dirty juice moves slower (heavy), clear moves faster
+                const speed = tube.type === 'dirty' ? 0.3 : (tube.type === 'clear' ? 0.8 : 0.5);
+                tube.mesh.material.map.offset.x -= speed * delta; 
+            });
+
+            // 2. Animate Ultrasonic Rings
+            if(machineParts.ultrasonicRings) {
+                machineParts.ultrasonicRings.children.forEach((child, i) => {
+                    if(child.geometry.type === 'TorusGeometry') {
+                        const scale = 1 + Math.sin(time * 20 + i) * 0.015; // Fast vibration
+                        child.scale.set(scale, scale, scale);
+                    }
+                });
+            }
+
+            // 3. Animate Screw Press Rotation (Core Mechanical Action)
+            if(machineParts.screwMesh) {
+                machineParts.screwMesh.rotation.x += delta * 1.5; // Continuously spin
+            }
+
+            // 4. Pulse PLC screen
+            if(machineParts.sensorBox && !activeOriginalMaterials.has(machineParts.sensorBox)) {
+               matSensor.emissiveIntensity = 0.8 + Math.sin(time * 5) * 0.4;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+
+        // --- RESIZE HANDLER ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = () => {
+            setTimeout(() => {
+                const loader = document.getElementById('loading');
+                loader.style.opacity = '0';
+                setTimeout(() => loader.remove(), 1000);
+                animate();
+            }, 800);
+        };
+
+    </script>
+</body>
+</html>
